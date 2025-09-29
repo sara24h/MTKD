@@ -340,11 +340,13 @@ def train(dataset, architecture, fraction=None):
         
     print(f"Found subsets: {df_files}")
     
+    # teachers/train.py - Inside the train function
+
     if fraction is not None:
-    # ✅ اصلاح نهایی: تبدیل ایمن float به رشته "03" یا "07"
-        fraction_float = float(fraction) * 10 
-    # استفاده از f-string برای تضمین دو رقمی بودن (مانند "03" یا "10")
-        fraction_str = f"{int(fraction_float):02d}" 
+    # This ensures "0.3" -> 3.0 -> 3 -> "03" for correct filtering
+        fraction_float = float(fraction) * 10
+    # Use f-string formatting to ensure two digits with a leading zero if needed
+        fraction_str = f"{int(fraction_float):02d}"
     
         df_files = [f for f in df_files if f.split("_")[-2] == fraction_str]
         
