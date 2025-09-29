@@ -34,7 +34,7 @@ class Train:
 
 
         if df_path is None:
-        
+            # حالت ۱: استفاده از کل مجموعه داده آموزشی (بدون ساب‌ست)
             self.uuid = "all_trainset"
             self.fraction = 1
             self.dataframe = None
@@ -46,14 +46,15 @@ class Train:
                 batch_size=self.batch_size,
             )
         else:
-        
+            # حالت ۲: استفاده از یک ساب‌ست تولید شده (فایل CSV)
             self.uuid = df_path.split("_")[-1].split(".")[0]
             self.fraction = df_path.split("_")[-2]
             self.dataframe = pd.read_csv(df_path)
             
-      
+            # ✅ اصلاح ۱: رفع خطای ValueError و مسیردهی فایل
+            # ساخت مسیر مطلق فایل با استفاده از DATA_DIRECTORY و ستون 'filename'
             self.dataframe["fixed_filename"] = self.dataframe["filename"].apply(
-                lambda filename: join(DATA_DIRECTORY, *filename.split("/")[-4:])
+                lambda filename: os.path.join(DATA_DIRECTORY, filename)
             )
             
             self.train_gen = self.datagen.flow_from_dataframe(
@@ -67,9 +68,15 @@ class Train:
                 batch_size=self.batch_size,
             )
 
+        # ✅ اصلاح ۲: رفع خطای No such file or directory برای دایرکتوری اعتبارسنجی
+        # ایجاد مسیر اعتبارسنجی و Fallback به 'test' در صورت عدم وجود 'val'
+        val_dir = os.path.join(DATA_DIRECTORY, dataset, "val")
+        if not os.path.isdir(val_dir):
+            print(f"Warning: 'val' directory not found at {val_dir}. Using 'test' for validation.")
+            val_dir = os.path.join(DATA_DIRECTORY, dataset, "test")
 
         self.val_gen = self.datagen.flow_from_directory(
-            os.path.join(DATA_DIRECTORY, dataset, "val"),
+            val_dir,
             target_size=self.target_size[:2],
             color_mode=self.color_mode,
             class_mode="categorical",
@@ -104,7 +111,8 @@ class Train:
 
     def train_model(self):
 
-        save_filename = f"{self.architecture}_{self.fraction}_{self.uuid}_ckpt"
+        # ✅ اصلاح ۳A: افزودن پسوند .keras برای checkpoint
+        save_filename = f"{self.architecture}_{self.fraction}_{self.uuid}.keras"
         save_dir = os.path.join(
             MODELS_DIRECTORY, self.dataset, "teachers", save_filename
         )
@@ -135,12 +143,15 @@ class Train:
             metrics=["accuracy"],
         )
         print(f"Starting training for {self.architecture} on {self.dataset} subset {self.uuid}...")
+        
+        train_size = len(self.dataframe) if self.dataframe is not None else self.train_size
+
         self.model.fit(
             x=self.train_gen,
             epochs=self.epochs,
             callbacks=callbacks,
             validation_data=self.val_gen,
-            steps_per_epoch=int(self.train_size / self.batch_size),
+            steps_per_epoch=int(train_size / self.batch_size),
             validation_steps=int(self.val_size / self.batch_size),
             use_multiprocessing=False,
             workers=1,
@@ -157,10 +168,13 @@ class Train:
         val_result = self.model.evaluate(
             x=self.val_gen, return_dict=True, steps=int(self.val_size / self.batch_size)
         )
+        
+        train_size = len(self.dataframe) if self.dataframe is not None else self.train_size
+
         train_result = self.model.evaluate(
             x=self.train_gen,
             return_dict=True,
-            steps=int(self.train_size / self.batch_size),
+            steps=int(train_size / self.batch_size),
         )
 
         test_accuracy = test_result.get("accuracy")
@@ -170,7 +184,8 @@ class Train:
         val_accuracy = val_result.get("accuracy")
         val_loss = val_result.get(loss_name)
 
-        save_filename = f"{self.architecture}_{self.fraction}_{self.uuid}"
+        # ✅ اصلاح ۳B: افزودن پسوند .keras برای ذخیره نهایی
+        save_filename = f"{self.architecture}_{self.fraction}_{self.uuid}.keras"
         save_dir = os.path.join(
             MODELS_DIRECTORY, self.dataset, "teachers", save_filename
         )
@@ -245,7 +260,9 @@ class Train:
 def check_model_exists(dataset, architecture, directory):
 
     uuid = directory.split("_")[-1].split(".")[0]
-    fraction = directory.split("_")[-2]
+    # اصلاح: اگر 'all_trainset' باشد، خطای ایندکس ندهد
+    fraction = directory.split("_")[-2] if len(directory.split("_")) > 1 else '1' 
+
     teachers = os.path.join(MODELS_DIRECTORY, "teachers.csv")
     exists_teachers = False
     if os.path.exists(teachers):
@@ -267,9 +284,10 @@ def check_model_exists(dataset, architecture, directory):
         ).any()
         if exists_training:
         
-            checkpoint_filename = f"{architecture}_{fraction}_{uuid}_ckpt"
+            # نام فایل چک‌پوینت باید با .keras چک شود
+            checkpoint_filename = f"{architecture}_{fraction}_{uuid}.keras"
             checkpoint_dir = os.path.join(MODELS_DIRECTORY, dataset, "teachers", checkpoint_filename)
-            exists_training = os.path.isdir(checkpoint_dir)
+            exists_training = os.path.isfile(checkpoint_dir) # چک کردن فایل، نه دایرکتوری
             if exists_training:
                 # 24 hours validity check (86400 seconds)
                 exists_training = os.path.getmtime(checkpoint_dir) + 86400 >= time.time() 
@@ -299,9 +317,9 @@ def add_to_training(dataset, architecture, directory):
         )
 
 
-def train_all(dataset, architecture):
+def train_all(dataset, architecture, fraction=None): # ✅ اصلاح ۴A: افزودن fraction
 
-    train(dataset, architecture)
+    train(dataset, architecture, fraction=fraction) # انتقال fraction
 
 
 def train(dataset, architecture, fraction=None):
@@ -317,14 +335,14 @@ def train(dataset, architecture, fraction=None):
             return
             
     else:
-     
+      
         df_files = os.listdir(subsets_dir)
         
     print(f"Found subsets: {df_files}")
     
-    if fraction:
-
-        fraction_str = str(int(fraction * 10))  
+    if fraction is not None:
+        # تبدیل ایمن float به string برای فیلتر (مثلاً 0.3 به "03")
+        fraction_str = str(int(float(fraction) * 10)) 
         df_files = [f for f in df_files if f.split("_")[-2] == fraction_str]
         
     print(f"Filtered subsets for fraction {fraction}: {df_files}")
@@ -340,10 +358,9 @@ def train(dataset, architecture, fraction=None):
     with mirrored_strategy.scope():
         for df_file in df_files:
             df_path = os.path.join(MODELS_DIRECTORY, dataset, "subsets", df_file)
-  
+    
             current_df_path = None if df_file == "all_trainset" else df_path
             
- 
             temp_directory = f"{architecture}_{1}_all_trainset.csv" if current_df_path is None else current_df_path
             
             if current_df_path is None or not check_model_exists(dataset, architecture, temp_directory):
@@ -351,7 +368,7 @@ def train(dataset, architecture, fraction=None):
                 add_to_training(dataset, architecture, temp_directory)
                 
                 try:
-      
+    
                     train_instance = Train(
                         dataset=dataset, df_path=current_df_path, architecture=architecture
                     )
@@ -359,7 +376,7 @@ def train(dataset, architecture, fraction=None):
                     train_instance.evaluate_and_save()
                 except Exception as e:
                     print(f"An error occurred during training for {df_file}: {e}")
-               
+                
 
 
 if __name__ == "__main__":
@@ -374,7 +391,8 @@ if __name__ == "__main__":
 
     print(args)
     if args.all:
-        train_all(dataset=args.dataset, architecture=args.architecture)
+        # ✅ اصلاح ۴B: ارسال args.fraction هنگام استفاده از --all
+        train_all(dataset=args.dataset, architecture=args.architecture, fraction=args.fraction) 
     else:
 
         fraction_val = float(args.fraction) if args.fraction is not None else None
