@@ -21,13 +21,14 @@ def generate_subset_dataframe(dataset, subset_fraction=0.7):
     columns = [x_col, y_col]
     subset = pd.DataFrame(columns=columns)
 
-    for subdir, dirs, files in os.walk(os.path.join(DATA_DIRECTORY, dataset, "train")):
-        for file in files:
-            if random.random() <= subset_fraction:
-                src = Path(os.path.join(subdir, file))
-                src = Path(*src.parts[1:])
-                y = f"{os.path.basename(os.path.dirname(src))}_class"
-                subset = subset.append({x_col: src, y_col: y}, ignore_index=True)
+    for subdir, dirs, files in os.walk(os.path.join(DATA_DIRECTORY, dataset, "train")):
+        for file in files:
+            if random.random() <= subset_fraction:
+                src = Path(os.path.join(subdir, file))
+                src = Path(*src.parts[1:])
+          
+                y = os.path.basename(os.path.dirname(src))
+                subset = subset.append({x_col: src, y_col: y}, ignore_index=True)
 
     filename = f'subset_{str(subset_fraction).replace(".", "")}_{uuid.uuid4().hex}.csv'
     save_path = os.path.join(MODELS_DIRECTORY, dataset, "subsets")
