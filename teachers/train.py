@@ -341,8 +341,11 @@ def train(dataset, architecture, fraction=None):
     print(f"Found subsets: {df_files}")
     
     if fraction is not None:
-        # تبدیل ایمن float به string برای فیلتر (مثلاً 0.3 به "03")
-        fraction_str = str(int(float(fraction) * 10)) 
+    # ✅ اصلاح نهایی: تبدیل ایمن float به رشته "03" یا "07"
+        fraction_float = float(fraction) * 10 
+    # استفاده از f-string برای تضمین دو رقمی بودن (مانند "03" یا "10")
+        fraction_str = f"{int(fraction_float):02d}" 
+    
         df_files = [f for f in df_files if f.split("_")[-2] == fraction_str]
         
     print(f"Filtered subsets for fraction {fraction}: {df_files}")
