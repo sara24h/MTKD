@@ -39,7 +39,7 @@ class Train:
             self.fraction = 1
             self.dataframe = None
             self.train_gen = self.datagen.flow_from_directory(
-                os.path.join(DATA_DIRECTORY, dataset, "train"),
+                os.path.join(DATA_DIRECTORY, "train"),
                 target_size=self.target_size[:2],
                 color_mode=self.color_mode,
                 class_mode="categorical",
@@ -70,7 +70,7 @@ class Train:
 
         # ✅ اصلاح ۲: رفع خطای No such file or directory برای دایرکتوری اعتبارسنجی
         # ایجاد مسیر اعتبارسنجی و Fallback به 'test' در صورت عدم وجود 'val'
-        val_dir = os.path.join(DATA_DIRECTORY, dataset, "val")
+        val_dir = os.path.join(DATA_DIRECTORY, "val")
         if not os.path.isdir(val_dir):
             print(f"Warning: 'val' directory not found at {val_dir}. Using 'test' for validation.")
             val_dir = os.path.join(DATA_DIRECTORY, dataset, "test")
@@ -83,7 +83,7 @@ class Train:
             batch_size=self.batch_size,
         )
         self.test_gen = self.datagen.flow_from_directory(
-            os.path.join(DATA_DIRECTORY, dataset, "test"),
+            os.path.join(DATA_DIRECTORY, "test"),
             target_size=self.target_size[:2],
             color_mode=self.color_mode,
             class_mode="categorical",
