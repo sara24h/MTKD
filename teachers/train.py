@@ -1,3 +1,4 @@
+# /kaggle/working/MTKD/teachers/train.py (کد نهایی و تصحیح‌شده)
 import argparse
 import csv
 import os
@@ -29,6 +30,14 @@ class Train:
         self.set_dataset_params()
         self.set_model_params()
         self.set_model()
+        
+
+        def create_fixed_filename(filename_series):
+
+            path_parts = filename_series.split("/")
+
+            return join(DATA_DIRECTORY, *path_parts[-4:])
+
         if df_path is None:
             self.uuid = "all_trainset"
             self.fraction = 1
@@ -44,9 +53,10 @@ class Train:
             self.uuid = df_path.split("_")[-1].split(".")[0]
             self.fraction = df_path.split("_")[-2]
             self.dataframe = pd.read_csv(df_path)
-            self.dataframe["fixed_filename"] = self.dataframe.apply(
-                lambda row: join(DATA_DIRECTORY, *row.filename.split("/")[-4:]), axis=1
-            )
+            
+            # ✅ اصلاح برای رفع ValueError: استفاده از apply روی ستون filename
+            self.dataframe["fixed_filename"] = self.dataframe["filename"].apply(create_fixed_filename)
+            
             self.train_gen = self.datagen.flow_from_dataframe(
                 self.dataframe,
                 directory="/",
@@ -90,7 +100,7 @@ class Train:
         self.test_gen = self.augment_generator(self.test_gen, training=False)
 
     def train_model(self):
-
+        # ... (بقیه متد train_model)
         save_filename = f"{self.architecture}_{self.fraction}_{self.uuid}_ckpt"
         save_dir = os.path.join(
             MODELS_DIRECTORY, self.dataset, "teachers", save_filename
@@ -134,7 +144,7 @@ class Train:
         )
 
     def evaluate_and_save(self, filename="teachers.csv", loss_name="loss"):
-
+        # ... (بقیه متد evaluate_and_save)
         test_result = self.model.evaluate(
             x=self.test_gen,
             return_dict=True,
@@ -224,6 +234,7 @@ class Train:
 
 
 def check_model_exists(dataset, architecture, directory):
+    # ... (بقیه تابع check_model_exists)
     uuid = directory.split("_")[-1].split(".")[0]
     fraction = directory.split("_")[-2]
     teachers = os.path.join(MODELS_DIRECTORY, "teachers.csv")
@@ -252,7 +263,8 @@ def check_model_exists(dataset, architecture, directory):
             )
             exists_training = os.path.isdir(checkpoint_dir)
             if exists_training:
-                exists_training = os.path.getmtime(checkpoint_dir) + 1 >= time.time()
+                # 24 hours validity check
+                exists_training = os.path.getmtime(checkpoint_dir) + 86400 >= time.time() 
 
     else:
         exists_training = False
@@ -265,6 +277,7 @@ def check_model_exists(dataset, architecture, directory):
 
 
 def add_to_training(dataset, architecture, directory):
+    # ... (بقیه تابع add_to_training)
     csv_log_filename = os.path.join(MODELS_DIRECTORY, "training.csv")
     fileEmpty = not os.path.isfile(csv_log_filename)
     uuid = directory.split("_")[-1].split(".")[0]
@@ -289,7 +302,10 @@ def train(dataset, architecture, fraction=None):
     df_files = os.listdir(os.path.join(MODELS_DIRECTORY, dataset, "subsets"))
     print(df_files)
     if fraction:
-        df_files = [f for f in df_files if float(f.split("_")[-2]) / 10 == fraction]
+
+        fraction_str = str(int(fraction * 10)) 
+        df_files = [f for f in df_files if f.split("_")[-2] == fraction_str]
+        
     print(df_files)
     random.shuffle(df_files)
     mirrored_strategy = tf.distribute.MirroredStrategy()
@@ -320,8 +336,9 @@ if __name__ == "__main__":
     if args.all:
         train_all(dataset=args.dataset, architecture=args.architecture)
     else:
+        fraction_val = float(args.fraction) if args.fraction is not None else None
         train(
             dataset=args.dataset,
             architecture=args.architecture,
-            fraction=float(args.fraction),
+            fraction=fraction_val,
         )
