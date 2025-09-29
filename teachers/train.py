@@ -13,6 +13,7 @@ from imgaug import augmenters as iaa
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
+# فرض بر وجود فایل‌های پیکربندی در پوشه config
 from config.const import DATA_DIRECTORY, MODELS_DIRECTORY
 from config.datasets import get_dataset_params
 from config.models import get_model, get_model_params
@@ -32,13 +33,13 @@ class Train:
         self.set_model_params()
         self.set_model()
 
-        def create_fixed_filename(filename):
-       
-            path_parts = filename.split("/")
-            return join(DATA_DIRECTORY, *path_parts[-4:])
+        # ❌ تابع محلی create_fixed_filename حذف شد تا خطای ValueError رفع شود.
+        # def create_fixed_filename(filename):
+        #     path_parts = filename.split("/")
+        #     return join(DATA_DIRECTORY, *path_parts[-4:])
 
         if df_path is None:
-    
+        
             self.uuid = "all_trainset"
             self.fraction = 1
             self.dataframe = None
@@ -50,17 +51,19 @@ class Train:
                 batch_size=self.batch_size,
             )
         else:
-          
+        
             self.uuid = df_path.split("_")[-1].split(".")[0]
             self.fraction = df_path.split("_")[-2]
             self.dataframe = pd.read_csv(df_path)
             
-   
-            self.dataframe["fixed_filename"] = self.dataframe["filename"].apply(create_fixed_filename)
+            # ✅ اصلاح نهایی: استفاده مستقیم از lambda برای ایجاد مسیر کامل
+            self.dataframe["fixed_filename"] = self.dataframe["filename"].apply(
+                lambda filename: join(DATA_DIRECTORY, *filename.split("/")[-4:])
+            )
             
             self.train_gen = self.datagen.flow_from_dataframe(
                 self.dataframe,
-                directory="/", 
+                directory="/",  # مسیر ریشه را روی "/" قرار می‌دهیم زیرا مسیر کامل در 'fixed_filename' است
                 x_col="fixed_filename",
                 y_col="class",
                 target_size=self.target_size[:2],
@@ -89,7 +92,7 @@ class Train:
         self.modify_generators()
 
     def augment_generator(self, generator, training=True):
-  
+    
         while True:
             x, y = next(generator)
         
@@ -99,13 +102,13 @@ class Train:
                 yield x.astype(np.uint8), y
 
     def modify_generators(self):
-   
+    
         self.train_gen = self.augment_generator(self.train_gen, training=True)
         self.val_gen = self.augment_generator(self.val_gen, training=False)
         self.test_gen = self.augment_generator(self.test_gen, training=False)
 
     def train_model(self):
- 
+
         save_filename = f"{self.architecture}_{self.fraction}_{self.uuid}_ckpt"
         save_dir = os.path.join(
             MODELS_DIRECTORY, self.dataset, "teachers", save_filename
@@ -144,7 +147,7 @@ class Train:
             validation_data=self.val_gen,
             steps_per_epoch=int(self.train_size / self.batch_size),
             validation_steps=int(self.val_size / self.batch_size),
-            use_multiprocessing=False, 
+            use_multiprocessing=False,
             workers=1,
             max_queue_size=10,
         )
@@ -199,7 +202,7 @@ class Train:
                 csvfile, delimiter=",", lineterminator="\n", fieldnames=headers
             )
             if fileEmpty:
-                writer.writeheader()  
+                writer.writeheader() 
 
             writer.writerow(
                 {
@@ -229,7 +232,7 @@ class Train:
         self.augmenter_magnitude = model_params["augmenter_magnitude"]
 
     def set_dataset_params(self):
-  
+    
         dataset_params = get_dataset_params(self.dataset)
         self.target_size = dataset_params["target_size"]
         self.color_mode = dataset_params["color_mode"]
@@ -268,7 +271,7 @@ def check_model_exists(dataset, architecture, directory):
             & (training_df["uuid"] == uuid)
         ).any()
         if exists_training:
-         
+        
             checkpoint_filename = f"{architecture}_{fraction}_{uuid}_ckpt"
             checkpoint_dir = os.path.join(MODELS_DIRECTORY, dataset, "teachers", checkpoint_filename)
             exists_training = os.path.isdir(checkpoint_dir)
@@ -294,7 +297,7 @@ def add_to_training(dataset, architecture, directory):
             csvfile, delimiter=",", lineterminator="\n", fieldnames=headers
         )
         if fileEmpty:
-            writer.writeheader()  
+            writer.writeheader() 
 
         writer.writerow(
             {"dataset": dataset, "architecture": architecture, "uuid": uuid}
@@ -312,9 +315,15 @@ def train(dataset, architecture, fraction=None):
     subsets_dir = os.path.join(MODELS_DIRECTORY, dataset, "subsets")
     if not os.path.isdir(subsets_dir):
         print(f"Error: Subsets directory not found at {subsets_dir}. Run scripts/generate_subset.py first.")
-        return
+        # اگر subsets_dir وجود نداشته باشد، فرض می‌کنیم کاربر قصد آموزش بر روی کل دیتاست را دارد
+        if fraction is None:
+            df_files = ["all_trainset"] 
+        else:
+            return
+            
+    else:
+        df_files = os.listdir(subsets_dir)
         
-    df_files = os.listdir(subsets_dir)
     print(f"Found subsets: {df_files}")
     
     if fraction:
@@ -324,7 +333,7 @@ def train(dataset, architecture, fraction=None):
         
     print(f"Filtered subsets for fraction {fraction}: {df_files}")
     random.shuffle(df_files)
-   
+    
     try:
         mirrored_strategy = tf.distribute.MirroredStrategy()
         print(f"Number of devices: {mirrored_strategy.num_replicas_in_sync}")
@@ -335,11 +344,21 @@ def train(dataset, architecture, fraction=None):
     with mirrored_strategy.scope():
         for df_file in df_files:
             df_path = os.path.join(MODELS_DIRECTORY, dataset, "subsets", df_file)
-            if not check_model_exists(dataset, architecture, df_path):
-                add_to_training(dataset, architecture, df_path)
+            
+            # تعیین مسیر درست برای Train
+            current_df_path = None if df_file == "all_trainset" else df_path
+            
+            # check_model_exists برای حالت df_path=None مدیریت نشده است. برای سادگی،
+            # فرض می‌کنیم 'all_trainset' تنها یک بار آموزش داده می‌شود.
+            if current_df_path is None or not check_model_exists(dataset, architecture, current_df_path):
+                
+                # برای 'all_trainset' نیاز به یک مسیر موقت برای uuid داریم
+                temp_directory = f"{architecture}_{1}_all_trainset.csv" if current_df_path is None else current_df_path
+                add_to_training(dataset, architecture, temp_directory)
+                
                 try:
                     train_instance = Train(
-                        dataset=dataset, df_path=df_path, architecture=architecture
+                        dataset=dataset, df_path=current_df_path, architecture=architecture
                     )
                     train_instance.train_model()
                     train_instance.evaluate_and_save()
