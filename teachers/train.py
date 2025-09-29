@@ -14,6 +14,7 @@ from imgaug import augmenters as iaa
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 # فرض بر وجود فایل‌های پیکربندی در پوشه config
+# شما باید مطمئن شوید این ماژول‌ها قابل دسترس هستند
 from config.const import DATA_DIRECTORY, MODELS_DIRECTORY
 from config.datasets import get_dataset_params
 from config.models import get_model, get_model_params
@@ -33,7 +34,7 @@ class Train:
         self.set_model_params()
         self.set_model()
 
-        # ❌ تابع محلی create_fixed_filename حذف شد تا خطای ValueError رفع شود.
+        # تابع محلی create_fixed_filename کاملاً حذف شد.
         # def create_fixed_filename(filename):
         #     path_parts = filename.split("/")
         #     return join(DATA_DIRECTORY, *path_parts[-4:])
@@ -56,7 +57,7 @@ class Train:
             self.fraction = df_path.split("_")[-2]
             self.dataframe = pd.read_csv(df_path)
             
-            # ✅ اصلاح نهایی: استفاده مستقیم از lambda برای ایجاد مسیر کامل
+            # ✅ اصلاح نهایی و قطعی: استفاده از lambda بر روی ستون "filename"
             self.dataframe["fixed_filename"] = self.dataframe["filename"].apply(
                 lambda filename: join(DATA_DIRECTORY, *filename.split("/")[-4:])
             )
@@ -322,6 +323,7 @@ def train(dataset, architecture, fraction=None):
             return
             
     else:
+        # فایل‌های تولید شده در generate_subset.py را لیست می‌کند
         df_files = os.listdir(subsets_dir)
         
     print(f"Found subsets: {df_files}")
@@ -345,18 +347,19 @@ def train(dataset, architecture, fraction=None):
         for df_file in df_files:
             df_path = os.path.join(MODELS_DIRECTORY, dataset, "subsets", df_file)
             
-            # تعیین مسیر درست برای Train
+            # تعیین مسیر درست برای Train (اگر فایل "all_trainset" باشد، df_path باید None باشد)
             current_df_path = None if df_file == "all_trainset" else df_path
             
             # check_model_exists برای حالت df_path=None مدیریت نشده است. برای سادگی،
-            # فرض می‌کنیم 'all_trainset' تنها یک بار آموزش داده می‌شود.
-            if current_df_path is None or not check_model_exists(dataset, architecture, current_df_path):
+            # یک مسیر موقت می‌سازیم تا add_to_training بتواند uuid را استخراج کند.
+            temp_directory = f"{architecture}_{1}_all_trainset.csv" if current_df_path is None else current_df_path
+            
+            if current_df_path is None or not check_model_exists(dataset, architecture, temp_directory):
                 
-                # برای 'all_trainset' نیاز به یک مسیر موقت برای uuid داریم
-                temp_directory = f"{architecture}_{1}_all_trainset.csv" if current_df_path is None else current_df_path
                 add_to_training(dataset, architecture, temp_directory)
                 
                 try:
+                    # فراخوانی کلاس Train با مسیر DataFrame صحیح (یا None)
                     train_instance = Train(
                         dataset=dataset, df_path=current_df_path, architecture=architecture
                     )
