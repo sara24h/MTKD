@@ -34,7 +34,7 @@ class Train:
 
 
         if df_path is None:
-            
+        
             self.uuid = "all_trainset"
             self.fraction = 1
             self.dataframe = None
@@ -46,40 +46,30 @@ class Train:
                 batch_size=self.batch_size,
             )
         else:
-            
+        
             self.uuid = df_path.split("_")[-1].split(".")[0]
             self.fraction = df_path.split("_")[-2]
             self.dataframe = pd.read_csv(df_path)
             
-            # ✅ اصلاح ۱: ساده‌سازی ساخت مسیر فایل مطلق (رفع خطای 'class')
-            # فرض می‌کنیم 'filename' شامل مسیر نسبی از DATA_DIRECTORY است (مثلاً cifar10/train/...)
+      
             self.dataframe["fixed_filename"] = self.dataframe["filename"].apply(
-                lambda filename: os.path.join(DATA_DIRECTORY, filename) 
+                lambda filename: join(DATA_DIRECTORY, *filename.split("/")[-4:])
             )
             
             self.train_gen = self.datagen.flow_from_dataframe(
                 self.dataframe,
                 directory="/",  
                 x_col="fixed_filename",
-                y_col="class", # اگر نام ستون برچسب در CSV 'class' نباشد، این را تغییر دهید (مثلاً 'label')
+                y_col="class",
                 target_size=self.target_size[:2],
                 color_mode=self.color_mode,
                 class_mode="categorical",
                 batch_size=self.batch_size,
             )
 
-        # ✅ اصلاح ۲: مسیردهی صحیح برای ژنراتورهای val و test
-        # اگر 'val' وجود ندارد، از 'test' برای اعتبارسنجی استفاده می‌کنیم
-        
-        # اگر پوشه val با موفقیت توسط اسکریپت split_data.py ساخته شده است:
-        val_dir = os.path.join(DATA_DIRECTORY, dataset, "val")
-        # در غیر این صورت، از 'test' به عنوان fallback استفاده می‌کنیم:
-        if not os.path.isdir(val_dir):
-            print(f"Warning: 'val' directory not found at {val_dir}. Using 'test' for validation.")
-            val_dir = os.path.join(DATA_DIRECTORY, dataset, "test")
 
         self.val_gen = self.datagen.flow_from_directory(
-            val_dir,
+            os.path.join(DATA_DIRECTORY, dataset, "val"),
             target_size=self.target_size[:2],
             color_mode=self.color_mode,
             class_mode="categorical",
@@ -327,14 +317,14 @@ def train(dataset, architecture, fraction=None):
             return
             
     else:
-      
+     
         df_files = os.listdir(subsets_dir)
         
     print(f"Found subsets: {df_files}")
     
     if fraction:
 
-        fraction_str = str(int(float(fraction) * 10)) # تبدیل ایمن‌تر
+        fraction_str = str(int(fraction * 10))  
         df_files = [f for f in df_files if f.split("_")[-2] == fraction_str]
         
     print(f"Filtered subsets for fraction {fraction}: {df_files}")
@@ -350,10 +340,10 @@ def train(dataset, architecture, fraction=None):
     with mirrored_strategy.scope():
         for df_file in df_files:
             df_path = os.path.join(MODELS_DIRECTORY, dataset, "subsets", df_file)
-    
+  
             current_df_path = None if df_file == "all_trainset" else df_path
             
-            
+ 
             temp_directory = f"{architecture}_{1}_all_trainset.csv" if current_df_path is None else current_df_path
             
             if current_df_path is None or not check_model_exists(dataset, architecture, temp_directory):
@@ -361,7 +351,7 @@ def train(dataset, architecture, fraction=None):
                 add_to_training(dataset, architecture, temp_directory)
                 
                 try:
-    
+      
                     train_instance = Train(
                         dataset=dataset, df_path=current_df_path, architecture=architecture
                     )
@@ -369,7 +359,7 @@ def train(dataset, architecture, fraction=None):
                     train_instance.evaluate_and_save()
                 except Exception as e:
                     print(f"An error occurred during training for {df_file}: {e}")
-                
+               
 
 
 if __name__ == "__main__":
