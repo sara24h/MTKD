@@ -1,4 +1,3 @@
-# /kaggle/working/MTKD/teachers/train.py (کد نهایی و تصحیح‌شده)
 import argparse
 import csv
 import os
@@ -13,6 +12,7 @@ import tensorflow as tf
 from imgaug import augmenters as iaa
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+
 from config.const import DATA_DIRECTORY, MODELS_DIRECTORY
 from config.datasets import get_dataset_params
 from config.models import get_model, get_model_params
@@ -24,21 +24,21 @@ if not os.path.exists(MODELS_DIRECTORY):
 
 
 class Train:
+
     def __init__(self, dataset, architecture, df_path=None):
         self.architecture = architecture
         self.dataset = dataset
         self.set_dataset_params()
         self.set_model_params()
         self.set_model()
-        
 
-        def create_fixed_filename(filename_series):
-
-            path_parts = filename_series.split("/")
-
+        def create_fixed_filename(filename):
+       
+            path_parts = filename.split("/")
             return join(DATA_DIRECTORY, *path_parts[-4:])
 
         if df_path is None:
+    
             self.uuid = "all_trainset"
             self.fraction = 1
             self.dataframe = None
@@ -50,16 +50,17 @@ class Train:
                 batch_size=self.batch_size,
             )
         else:
+          
             self.uuid = df_path.split("_")[-1].split(".")[0]
             self.fraction = df_path.split("_")[-2]
             self.dataframe = pd.read_csv(df_path)
             
-            # ✅ اصلاح برای رفع ValueError: استفاده از apply روی ستون filename
+   
             self.dataframe["fixed_filename"] = self.dataframe["filename"].apply(create_fixed_filename)
             
             self.train_gen = self.datagen.flow_from_dataframe(
                 self.dataframe,
-                directory="/",
+                directory="/", 
                 x_col="fixed_filename",
                 y_col="class",
                 target_size=self.target_size[:2],
@@ -67,6 +68,7 @@ class Train:
                 class_mode="categorical",
                 batch_size=self.batch_size,
             )
+
 
         self.val_gen = self.datagen.flow_from_directory(
             os.path.join(DATA_DIRECTORY, dataset, "val"),
@@ -87,20 +89,23 @@ class Train:
         self.modify_generators()
 
     def augment_generator(self, generator, training=True):
+  
         while True:
             x, y = next(generator)
+        
             if training:
                 yield self.rand_aug(images=x.astype(np.uint8)), y
             else:
                 yield x.astype(np.uint8), y
 
     def modify_generators(self):
+   
         self.train_gen = self.augment_generator(self.train_gen, training=True)
         self.val_gen = self.augment_generator(self.val_gen, training=False)
         self.test_gen = self.augment_generator(self.test_gen, training=False)
 
     def train_model(self):
-        # ... (بقیه متد train_model)
+ 
         save_filename = f"{self.architecture}_{self.fraction}_{self.uuid}_ckpt"
         save_dir = os.path.join(
             MODELS_DIRECTORY, self.dataset, "teachers", save_filename
@@ -131,6 +136,7 @@ class Train:
             loss=tf.keras.losses.CategoricalCrossentropy(),
             metrics=["accuracy"],
         )
+        print(f"Starting training for {self.architecture} on {self.dataset} subset {self.uuid}...")
         self.model.fit(
             x=self.train_gen,
             epochs=self.epochs,
@@ -138,13 +144,13 @@ class Train:
             validation_data=self.val_gen,
             steps_per_epoch=int(self.train_size / self.batch_size),
             validation_steps=int(self.val_size / self.batch_size),
-            use_multiprocessing=False,
+            use_multiprocessing=False, 
             workers=1,
             max_queue_size=10,
         )
 
     def evaluate_and_save(self, filename="teachers.csv", loss_name="loss"):
-        # ... (بقیه متد evaluate_and_save)
+
         test_result = self.model.evaluate(
             x=self.test_gen,
             return_dict=True,
@@ -171,6 +177,7 @@ class Train:
             MODELS_DIRECTORY, self.dataset, "teachers", save_filename
         )
         self.model.save(save_dir)
+        print(f"Model saved to: {save_dir}")
 
         csv_log_filename = os.path.join(MODELS_DIRECTORY, filename)
         fileEmpty = not os.path.isfile(csv_log_filename)
@@ -192,7 +199,7 @@ class Train:
                 csvfile, delimiter=",", lineterminator="\n", fieldnames=headers
             )
             if fileEmpty:
-                writer.writeheader()  # file doesn't exist yet, write a header
+                writer.writeheader()  
 
             writer.writerow(
                 {
@@ -209,6 +216,8 @@ class Train:
                     "test_accuracy": test_accuracy,
                 }
             )
+        print("Results logged to teachers.csv")
+
 
     def set_model_params(self):
         model_params = get_model_params(self.architecture)
@@ -220,6 +229,7 @@ class Train:
         self.augmenter_magnitude = model_params["augmenter_magnitude"]
 
     def set_dataset_params(self):
+  
         dataset_params = get_dataset_params(self.dataset)
         self.target_size = dataset_params["target_size"]
         self.color_mode = dataset_params["color_mode"]
@@ -230,54 +240,51 @@ class Train:
         self.test_size = dataset_params["test_size"]
 
     def set_model(self):
+
         self.model = get_model(self.architecture, self.target_size, self.classes)
 
 
 def check_model_exists(dataset, architecture, directory):
-    # ... (بقیه تابع check_model_exists)
+
     uuid = directory.split("_")[-1].split(".")[0]
     fraction = directory.split("_")[-2]
     teachers = os.path.join(MODELS_DIRECTORY, "teachers.csv")
+    exists_teachers = False
     if os.path.exists(teachers):
-        teachers = pd.read_csv(teachers)
+        teachers_df = pd.read_csv(teachers)
         exists_teachers = (
-            (teachers["dataset"] == dataset)
-            & (teachers["architecture"] == architecture)
-            & (teachers["uuid"] == uuid)
+            (teachers_df["dataset"] == dataset)
+            & (teachers_df["architecture"] == architecture)
+            & (teachers_df["uuid"] == uuid)
         ).any()
-    else:
-        exists_teachers = False
-
+    
+    exists_training = False
     training = os.path.join(MODELS_DIRECTORY, "training.csv")
-    if os.path.exists(os.path.join(MODELS_DIRECTORY, "training.csv")):
-        training = pd.read_csv(training)
+    if os.path.exists(training):
+        training_df = pd.read_csv(training)
         exists_training = (
-            (training["dataset"] == dataset)
-            & (training["architecture"] == architecture)
-            & (training["uuid"] == uuid)
+            (training_df["dataset"] == dataset)
+            & (training_df["architecture"] == architecture)
+            & (training_df["uuid"] == uuid)
         ).any()
         if exists_training:
+         
             checkpoint_filename = f"{architecture}_{fraction}_{uuid}_ckpt"
-            checkpoint_dir = os.path.join(
-                MODELS_DIRECTORY, dataset, checkpoint_filename
-            )
+            checkpoint_dir = os.path.join(MODELS_DIRECTORY, dataset, "teachers", checkpoint_filename)
             exists_training = os.path.isdir(checkpoint_dir)
             if exists_training:
-                # 24 hours validity check
+                # 24 hours validity check (86400 seconds)
                 exists_training = os.path.getmtime(checkpoint_dir) + 86400 >= time.time() 
 
-    else:
-        exists_training = False
-
     if exists_teachers:
-        print("model already trained!")
+        print(f"Model {architecture} for subset {uuid} already trained!")
     elif exists_training:
-        print("model during training!")
+        print(f"Model {architecture} for subset {uuid} during training!")
     return exists_teachers or exists_training
 
 
 def add_to_training(dataset, architecture, directory):
-    # ... (بقیه تابع add_to_training)
+
     csv_log_filename = os.path.join(MODELS_DIRECTORY, "training.csv")
     fileEmpty = not os.path.isfile(csv_log_filename)
     uuid = directory.split("_")[-1].split(".")[0]
@@ -287,7 +294,7 @@ def add_to_training(dataset, architecture, directory):
             csvfile, delimiter=",", lineterminator="\n", fieldnames=headers
         )
         if fileEmpty:
-            writer.writeheader()  # file doesn't exist yet, write a header
+            writer.writeheader()  
 
         writer.writerow(
             {"dataset": dataset, "architecture": architecture, "uuid": uuid}
@@ -295,31 +302,51 @@ def add_to_training(dataset, architecture, directory):
 
 
 def train_all(dataset, architecture):
+
     train(dataset, architecture)
 
 
 def train(dataset, architecture, fraction=None):
-    df_files = os.listdir(os.path.join(MODELS_DIRECTORY, dataset, "subsets"))
-    print(df_files)
+
+    
+    subsets_dir = os.path.join(MODELS_DIRECTORY, dataset, "subsets")
+    if not os.path.isdir(subsets_dir):
+        print(f"Error: Subsets directory not found at {subsets_dir}. Run scripts/generate_subset.py first.")
+        return
+        
+    df_files = os.listdir(subsets_dir)
+    print(f"Found subsets: {df_files}")
+    
     if fraction:
 
-        fraction_str = str(int(fraction * 10)) 
+        fraction_str = str(int(fraction * 10))  
         df_files = [f for f in df_files if f.split("_")[-2] == fraction_str]
         
-    print(df_files)
+    print(f"Filtered subsets for fraction {fraction}: {df_files}")
     random.shuffle(df_files)
-    mirrored_strategy = tf.distribute.MirroredStrategy()
+   
+    try:
+        mirrored_strategy = tf.distribute.MirroredStrategy()
+        print(f"Number of devices: {mirrored_strategy.num_replicas_in_sync}")
+    except ValueError as e:
+        print(f"Warning: Could not initialize MirroredStrategy. Running on default device. Error: {e}")
+        mirrored_strategy = tf.distribute.get_strategy()
+
     with mirrored_strategy.scope():
         for df_file in df_files:
             df_path = os.path.join(MODELS_DIRECTORY, dataset, "subsets", df_file)
             if not check_model_exists(dataset, architecture, df_path):
                 add_to_training(dataset, architecture, df_path)
-                train = Train(
-                    dataset=dataset, df_path=df_path, architecture=architecture
-                )
-                train.train_model()
-                train.evaluate_and_save()
-                tf.keras.backend.clear_session()
+                try:
+                    train_instance = Train(
+                        dataset=dataset, df_path=df_path, architecture=architecture
+                    )
+                    train_instance.train_model()
+                    train_instance.evaluate_and_save()
+                except Exception as e:
+                    print(f"An error occurred during training for {df_file}: {e}")
+                finally:
+                    tf.keras.backend.clear_session()
 
 
 if __name__ == "__main__":
@@ -336,6 +363,7 @@ if __name__ == "__main__":
     if args.all:
         train_all(dataset=args.dataset, architecture=args.architecture)
     else:
+
         fraction_val = float(args.fraction) if args.fraction is not None else None
         train(
             dataset=args.dataset,
