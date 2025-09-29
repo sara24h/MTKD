@@ -57,7 +57,7 @@ class Train:
             self.fraction = df_path.split("_")[-2]
             self.dataframe = pd.read_csv(df_path)
             
-            # ✅ اصلاح نهایی و قطعی: استفاده از lambda بر روی ستون "filename"
+      
             self.dataframe["fixed_filename"] = self.dataframe["filename"].apply(
                 lambda filename: join(DATA_DIRECTORY, *filename.split("/")[-4:])
             )
