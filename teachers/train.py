@@ -13,8 +13,6 @@ from imgaug import augmenters as iaa
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-# فرض بر وجود فایل‌های پیکربندی در پوشه config
-# شما باید مطمئن شوید این ماژول‌ها قابل دسترس هستند
 from config.const import DATA_DIRECTORY, MODELS_DIRECTORY
 from config.datasets import get_dataset_params
 from config.models import get_model, get_model_params
@@ -34,10 +32,6 @@ class Train:
         self.set_model_params()
         self.set_model()
 
-        # تابع محلی create_fixed_filename کاملاً حذف شد.
-        # def create_fixed_filename(filename):
-        #     path_parts = filename.split("/")
-        #     return join(DATA_DIRECTORY, *path_parts[-4:])
 
         if df_path is None:
         
@@ -64,7 +58,7 @@ class Train:
             
             self.train_gen = self.datagen.flow_from_dataframe(
                 self.dataframe,
-                directory="/",  # مسیر ریشه را روی "/" قرار می‌دهیم زیرا مسیر کامل در 'fixed_filename' است
+                directory="/",  
                 x_col="fixed_filename",
                 y_col="class",
                 target_size=self.target_size[:2],
@@ -316,14 +310,14 @@ def train(dataset, architecture, fraction=None):
     subsets_dir = os.path.join(MODELS_DIRECTORY, dataset, "subsets")
     if not os.path.isdir(subsets_dir):
         print(f"Error: Subsets directory not found at {subsets_dir}. Run scripts/generate_subset.py first.")
-        # اگر subsets_dir وجود نداشته باشد، فرض می‌کنیم کاربر قصد آموزش بر روی کل دیتاست را دارد
+
         if fraction is None:
             df_files = ["all_trainset"] 
         else:
             return
             
     else:
-        # فایل‌های تولید شده در generate_subset.py را لیست می‌کند
+     
         df_files = os.listdir(subsets_dir)
         
     print(f"Found subsets: {df_files}")
@@ -346,12 +340,10 @@ def train(dataset, architecture, fraction=None):
     with mirrored_strategy.scope():
         for df_file in df_files:
             df_path = os.path.join(MODELS_DIRECTORY, dataset, "subsets", df_file)
-            
-            # تعیین مسیر درست برای Train (اگر فایل "all_trainset" باشد، df_path باید None باشد)
+  
             current_df_path = None if df_file == "all_trainset" else df_path
             
-            # check_model_exists برای حالت df_path=None مدیریت نشده است. برای سادگی،
-            # یک مسیر موقت می‌سازیم تا add_to_training بتواند uuid را استخراج کند.
+ 
             temp_directory = f"{architecture}_{1}_all_trainset.csv" if current_df_path is None else current_df_path
             
             if current_df_path is None or not check_model_exists(dataset, architecture, temp_directory):
@@ -359,7 +351,7 @@ def train(dataset, architecture, fraction=None):
                 add_to_training(dataset, architecture, temp_directory)
                 
                 try:
-                    # فراخوانی کلاس Train با مسیر DataFrame صحیح (یا None)
+      
                     train_instance = Train(
                         dataset=dataset, df_path=current_df_path, architecture=architecture
                     )
@@ -367,8 +359,7 @@ def train(dataset, architecture, fraction=None):
                     train_instance.evaluate_and_save()
                 except Exception as e:
                     print(f"An error occurred during training for {df_file}: {e}")
-                finally:
-                    tf.keras.backend.clear_session()
+               
 
 
 if __name__ == "__main__":
